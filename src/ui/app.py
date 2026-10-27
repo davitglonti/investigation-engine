@@ -1,6 +1,7 @@
 import streamlit as st
 import os
 import sys
+import re
 from pathlib import Path
 
 # Add project root to sys.path
@@ -57,7 +58,6 @@ if "doc_store" not in st.session_state:
 
 if "hybrid_search" not in st.session_state:
     st.session_state.hybrid_search = HybridSearchService()
-    # Initial indexing of chunks
     st.session_state.hybrid_search.index_chunks(st.session_state.doc_store.get_all_chunks())
 
 if "agent" not in st.session_state:
@@ -67,35 +67,98 @@ doc_store: DocumentStore = st.session_state.doc_store
 hybrid_search: HybridSearchService = st.session_state.hybrid_search
 agent: InvestigationAgent = st.session_state.agent
 
-# Custom Styling
+# ----------------- MODERN CUSTOM STYLING -----------------
 st.markdown("""
 <style>
+    @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap');
+    
+    html, body, [class*="css"] {
+        font-family: 'Plus Jakarta Sans', sans-serif;
+    }
+    
     .main-header {
-        font-size: 2.2rem;
-        font-weight: 700;
-        color: #1E3A8A;
+        font-size: 2.3rem;
+        font-weight: 800;
+        background: linear-gradient(135deg, #1E3A8A 0%, #3B82F6 100%);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
         margin-bottom: 0.2rem;
     }
     .sub-header {
         font-size: 1.05rem;
-        color: #4B5563;
+        color: #64748B;
         margin-bottom: 1.5rem;
     }
-    .citation-box {
-        background-color: #F0FDF4;
-        border-left: 4px solid #16A34A;
-        padding: 0.8rem;
-        border-radius: 4px;
-        margin-bottom: 0.8rem;
-        font-size: 0.95rem;
+    
+    /* Findings Card */
+    .verdict-card {
+        background: #FFFFFF;
+        border: 1px solid #E2E8F0;
+        border-left: 5px solid #3B82F6;
+        border-radius: 12px;
+        padding: 1.4rem;
+        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
+        margin-bottom: 1.2rem;
+        line-height: 1.7;
     }
-    .conflict-box {
-        background-color: #FEF2F2;
-        border-left: 4px solid #DC2626;
-        padding: 0.8rem;
-        border-radius: 4px;
-        margin-bottom: 0.8rem;
-        font-size: 0.95rem;
+    
+    /* Citations Card */
+    .citation-card {
+        background: #F8FAFC;
+        border: 1px solid #E2E8F0;
+        border-radius: 10px;
+        padding: 1rem;
+        margin-bottom: 0.9rem;
+        transition: transform 0.15s ease, box-shadow 0.15s ease;
+    }
+    .citation-card:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 6px 12px -2px rgba(0, 0, 0, 0.08);
+    }
+    
+    .citation-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 0.4rem;
+    }
+    .doc-badge {
+        background-color: #EFF6FF;
+        color: #1D4ED8;
+        font-size: 0.8rem;
+        font-weight: 600;
+        padding: 0.2rem 0.6rem;
+        border-radius: 6px;
+        border: 1px solid #DBEAFE;
+    }
+    .score-badge {
+        background-color: #ECFDF5;
+        color: #047857;
+        font-size: 0.75rem;
+        font-weight: 600;
+        padding: 0.2rem 0.5rem;
+        border-radius: 6px;
+    }
+    .snippet-text {
+        font-size: 0.92rem;
+        color: #334155;
+        line-height: 1.55;
+        font-style: italic;
+        border-left: 3px solid #CBD5E1;
+        padding-left: 0.6rem;
+        margin-top: 0.4rem;
+    }
+
+    /* Conflict Box */
+    .conflict-card {
+        background-color: #FFF1F2;
+        border: 1px solid #FECDD3;
+        border-left: 5px solid #E11D48;
+        border-radius: 10px;
+        padding: 1.1rem;
+        margin-bottom: 1rem;
+        color: #9F1239;
+        line-height: 1.6;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -170,8 +233,8 @@ with tab_investigate:
     with col_query:
         query_input = st.text_area(
             "Enter investigation query (ქართულად ან ინგლისურად):",
-            value="რომელმა სისტემურმა ცვლილებებმა გამოიწვია მარტში გადახდების დამუშავების შეფერხება, რომელი სერვისები დაზიანდა და რომელი დოკუმენტები ადასტურებს ამას?",
-            height=100
+            value="რა მოთხოვნებია აღწერილი ამ დოკუმენტში?",
+            height=90
         )
     with col_actions:
         st.write("")
@@ -190,36 +253,46 @@ with tab_investigate:
             )
 
         st.markdown("### 🔎 Investigation Trajectory")
-        with st.status("Multi-Hop Reasoning Pipeline execution details:", expanded=True) as status:
+        with st.status(f"Multi-Hop Execution · Status: {result.status.upper()}", expanded=False) as status:
             for step in result.trajectory:
                 st.write(f"• {step}")
-            status.update(label=f"Investigation status: {result.status.upper()}", state="complete", expanded=False)
+            status.update(label=f"Investigation concluded ({result.status.upper()})", state="complete")
 
         col_res, col_side = st.columns([3, 2])
         
         with col_res:
-            st.subheader("📝 Synthesized Findings & Verdict")
-            st.markdown(result.answer)
+            st.subheader("📝 დასკვნა და ანალიზი (Synthesized Verdict)")
+            st.markdown(f'<div class="verdict-card">{result.answer}</div>', unsafe_allow_html=True)
             
             if result.contradictions:
                 for conflict in result.contradictions:
                     st.markdown(f"""
-                    <div class="conflict-box">
-                        <strong>⚠️ ურთიერთგამომრიცხავი ინფორმაცია (Contradiction):</strong><br/>
+                    <div class="conflict-card">
+                        <strong>⚠️ ურთიერთგამომრიცხავი ინფორმაცია (Contradiction Alert):</strong><br/>
                         {conflict}
                     </div>
                     """, unsafe_allow_html=True)
 
         with col_side:
-            st.subheader("📑 Verified Citations & Evidence")
+            st.subheader("📑 გადამოწმებული ციტატები (Citations)")
             if result.citations:
                 for c in result.citations:
-                    page_info = f", Page {c['page_number']}" if c.get('page_number') else ""
+                    page_info = f" · Page {c['page_number']}" if c.get('page_number') else ""
+                    clean_snippet = re.sub(r"\s+", " ", c['snippet']).strip()
+                    score_pct = int(min(1.0, c['score']) * 100)
+                    
                     st.markdown(f"""
-                    <div class="citation-box">
-                        <strong>[{c['doc_title']}]</strong> (Section: {c['section_header']}{page_info})<br/>
-                        <em>"{c['snippet']}"</em><br/>
-                        <small>Relevance Score: {c['score']} · Chunk: {c['chunk_id']}</small>
+                    <div class="citation-card">
+                        <div class="citation-header">
+                            <span class="doc-badge">📄 {c['doc_title']}</span>
+                            <span class="score-badge">🎯 Match {score_pct}%</span>
+                        </div>
+                        <div style="font-size: 0.8rem; color: #64748B; margin-bottom: 0.3rem;">
+                            Section: <strong>{c['section_header']}</strong>{page_info}
+                        </div>
+                        <div class="snippet-text">
+                            "{clean_snippet}"
+                        </div>
                     </div>
                     """, unsafe_allow_html=True)
             else:
@@ -327,7 +400,7 @@ with tab_dataset:
                 st.success("50,000 Corpus ready!")
                 st.rerun()
     else:
-        st.success(f"✅ ბაზაში სრულად არის ჩატვირთული **{corpus_count:,} დოკუმენტი** (`{corpus_file.name}`). ქვემოთ მოცემულია საძიებო და დასათვალიერებელი პანელი.")
+        st.success(f"✅ ბაზაში სრულად არის ჩატვირთული **{corpus_count:,} დოკუმენტი** (`{corpus_file.name}`).")
         
         st.markdown("### 🔎 მონაცემთა ინტერაქტიული დათვალიერება")
         col_s1, col_s2, col_s3 = st.columns([2, 1, 1])
