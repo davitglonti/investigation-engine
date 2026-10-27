@@ -1,19 +1,20 @@
 import re
 from typing import Dict, List, Tuple
-from rank_bm25 import BM25Okapi
+from rank_bm25 import BM25Plus
 from src.ingestion.models import Chunk
 
 
 class BM25SearchEngine:
     """
-    Sparse keyword search engine using BM25Okapi.
+    Sparse keyword search engine using BM25Plus.
+    BM25Plus guarantees non-negative lower-bounded IDF scores even for small collections.
     Supports multilingual text (Georgian, English, etc.) via Unicode word tokenization.
     """
 
     def __init__(self):
         self.chunks: List[Chunk] = []
         self.corpus_tokens: List[List[str]] = []
-        self.bm25: BM25Okapi = None
+        self.bm25: BM25Plus = None
 
     @staticmethod
     def tokenize(text: str) -> List[str]:
@@ -27,7 +28,7 @@ class BM25SearchEngine:
         self.chunks = list(chunks)
         self.corpus_tokens = [self.tokenize(c.content) for c in self.chunks]
         if self.corpus_tokens:
-            self.bm25 = BM25Okapi(self.corpus_tokens)
+            self.bm25 = BM25Plus(self.corpus_tokens)
         else:
             self.bm25 = None
 

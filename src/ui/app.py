@@ -228,7 +228,7 @@ with tab_investigate:
 # ----------------- TAB 2: DOCUMENT HUB -----------------
 with tab_documents:
     st.subheader("📂 Document Management & Ingestion Pipeline")
-    st.caption("Upload documents in PDF, Markdown, TXT, or JSON formats. Files are deduplicated, parsed, and indexed.")
+    st.caption("Upload documents in PDF, Markdown, TXT, or JSON formats. Files are automatically deduplicated, parsed, and indexed.")
     
     col_up, col_info = st.columns([2, 1])
     
@@ -239,25 +239,38 @@ with tab_documents:
             accept_multiple_files=True
         )
         if uploaded_files:
-            st.success(f"Selected {len(uploaded_files)} file(s).")
-            if st.button("⚡ Ingest & Index Uploaded Files", type="primary"):
-                added_count = 0
-                dup_count = 0
+            if "processed_files" not in st.session_state:
+                st.session_state.processed_files = set()
+
+            new_files = [f for f in uploaded_files if f.name not in st.session_state.processed_files]
+            if new_files:
+                with st.spinner(f"Processing {len(new_files)} new document(s)..."):
+                    added_count = 0
+                    dup_count = 0
+                    for uf in new_files:
+                        file_bytes = uf.read()
+                        doc, was_added = doc_store.add_document(
+                            file_bytes,
+                            uf.name,
+                            strategy=active_strategy
+                        )
+                        st.session_state.processed_files.add(uf.name)
+                        if was_added:
+                            added_count += 1
+                        else:
+                            dup_count += 1
+
+                    # Re-index hybrid search
+                    hybrid_search.index_chunks(doc_store.get_all_chunks())
+                    st.success(f"✅ Auto-Ingestion Complete: {added_count} new doc(s) indexed, {dup_count} duplicate(s) filtered.")
+                    st.rerun()
+
+            if st.button("⚡ Force Re-Index All Files", type="primary"):
                 for uf in uploaded_files:
-                    file_bytes = uf.read()
-                    doc, was_added = doc_store.add_document(
-                        file_bytes,
-                        uf.name,
-                        strategy=active_strategy
-                    )
-                    if was_added:
-                        added_count += 1
-                    else:
-                        dup_count += 1
-                
-                # Re-index hybrid search
+                    file_bytes = uf.getvalue()
+                    doc_store.add_document(file_bytes, uf.name, strategy=active_strategy, allow_duplicates=True)
                 hybrid_search.index_chunks(doc_store.get_all_chunks())
-                st.success(f"Ingestion complete: {added_count} added, {dup_count} duplicate(s) filtered. Hybrid index updated!")
+                st.success("Re-indexed all documents successfully!")
                 st.rerun()
 
     with col_info:

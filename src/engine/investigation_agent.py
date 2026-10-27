@@ -95,9 +95,11 @@ STRICT GROUNDEDNESS RULES:
             reverse=True
         )[:top_k]
 
-        # Check if any evidence exists or if scores are completely ungrounded
-        if not ranked_chunks:
-            trajectory.append("Step 4: Evidence evaluation: No relevant documents found.")
+        top_score = candidate_scores.get(ranked_chunks[0].id, 0.0) if ranked_chunks else 0.0
+
+        # Enforce strict groundedness threshold (abstain if irrelevant noise)
+        if not ranked_chunks or (strict_groundedness and top_score < 0.20):
+            trajectory.append(f"Step 4: Evidence evaluation: Top relevance score ({top_score:.3f}) below threshold (0.20).")
             return InvestigationResult(
                 query=query,
                 answer=(
@@ -110,7 +112,7 @@ STRICT GROUNDEDNESS RULES:
                 status="abstained_no_evidence"
             )
 
-        trajectory.append(f"Step 4: Filtered to top {len(ranked_chunks)} most relevant evidence chunks.")
+        trajectory.append(f"Step 4: Filtered to top {len(ranked_chunks)} evidence chunks (Top score: {top_score:.3f}).")
 
         # --- STEP 4: Contradiction Detection ---
         if detect_contradictions:
@@ -163,16 +165,36 @@ STRICT GROUNDEDNESS RULES:
         )
 
     def _generate_investigative_queries(self, main_query: str) -> List[str]:
-        """Deconstruct complex query into targeted sub-queries for multi-hop retrieval."""
+        """Deconstruct complex query into targeted sub-queries with semantic alias expansion."""
         queries = [main_query]
-        
-        # Heuristic keywords extraction
-        keywords = re.findall(r"\w{4,}", main_query.lower())
-        if len(keywords) >= 2:
-            queries.append(" ".join(keywords[:3]))
-            queries.append(" ".join(keywords[-3:]))
-        
-        return list(dict.fromkeys(queries))[:3]
+        q_lower = main_query.lower()
+
+        # 1. Overview / Summary Intent Recognition (e.g. "რაზეა პდფ?", "რა წერია?", "შინაარსი")
+        summary_triggers = ["რაზეა", "შინაარსი", "რა წერია", "რა არის", "მოკლედ", "about", "summary", "overview", "what is"]
+        if any(trigger in q_lower for trigger in summary_triggers):
+            queries.extend([
+                "პროექტის აღწერა მიზანი",
+                "ძირითადი მოთხოვნები არქიტექტურა",
+                "Project description overview",
+                "Applied AI Investigation Engine"
+            ])
+
+        # 2. Transliteration / Acronym expansion ("პდფ" <-> "pdf", "დოკუმენტი")
+        if "პდფ" in q_lower or "pdf" in q_lower:
+            expanded = q_lower.replace("პდფ", "pdf დოკუმენტი").replace("pdf", "დოკუმენტი pdf")
+            queries.append(expanded)
+
+        if "მოთხოვნებ" in q_lower:
+            queries.extend(["ძირითადი მოთხოვნები", "სავალდებულოა დამუშავება"])
+
+        # 3. N-gram keyword extraction
+        words = [w.strip("?,.!") for w in q_lower.split() if len(w) > 2]
+        if len(words) >= 2:
+            queries.append(" ".join(words[:3]))
+
+        # Remove duplicates while preserving order
+        unique_queries = list(dict.fromkeys(queries))
+        return unique_queries[:4]
 
     def _detect_cross_document_contradictions(self, chunks: List[Chunk]) -> List[str]:
         """Detect timestamps, status, or metric contradictions across different documents."""
