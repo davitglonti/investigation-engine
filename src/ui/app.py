@@ -11,6 +11,8 @@ if str(PROJECT_ROOT) not in sys.path:
 from src.core.config import settings
 from src.ingestion.document_store import DocumentStore
 from src.ingestion.dataset_loader import DatasetLoader
+from src.retrieval.hybrid_search import HybridSearchService
+from src.engine.investigation_agent import InvestigationAgent
 
 st.set_page_config(
     page_title="AI Investigation Engine",
@@ -19,11 +21,11 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Initialize Session State Document Store
+# ----------------- SESSION STATE INITIALIZATION -----------------
 if "doc_store" not in st.session_state:
     st.session_state.doc_store = DocumentStore()
     
-    # Pre-load sample investigation documents for instant demonstration
+    # Pre-load realistic investigation knowledge base
     sample_docs = [
         (
             "# Incident Post-Mortem: Payment Gateway Outage\n"
@@ -53,7 +55,17 @@ if "doc_store" not in st.session_state:
     for content, filename in sample_docs:
         st.session_state.doc_store.add_document(content, filename, strategy="semantic")
 
+if "hybrid_search" not in st.session_state:
+    st.session_state.hybrid_search = HybridSearchService()
+    # Initial indexing of chunks
+    st.session_state.hybrid_search.index_chunks(st.session_state.doc_store.get_all_chunks())
+
+if "agent" not in st.session_state:
+    st.session_state.agent = InvestigationAgent(st.session_state.hybrid_search)
+
 doc_store: DocumentStore = st.session_state.doc_store
+hybrid_search: HybridSearchService = st.session_state.hybrid_search
+agent: InvestigationAgent = st.session_state.agent
 
 # Custom Styling
 st.markdown("""
@@ -88,14 +100,14 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# Sidebar Configuration
+# ----------------- SIDEBAR -----------------
 with st.sidebar:
     st.image("https://img.icons8.com/fluency/96/search-in-list.png", width=64)
     st.title("Investigation Control")
     st.caption("Applied AI · Talent Growth Program")
     st.divider()
 
-    st.subheader("⚙️ Engine Settings")
+    st.subheader("⚙️ Search & Chunking")
     chunk_strategy_label = st.selectbox(
         "Chunking Strategy",
         options=["Semantic / Structure-Aware", "Recursive Character Chunking"],
@@ -103,22 +115,42 @@ with st.sidebar:
     )
     active_strategy = "semantic" if "Semantic" in chunk_strategy_label else "recursive"
     
-    search_mode = st.selectbox(
+    search_mode_label = st.selectbox(
         "Search Mode",
         options=["Hybrid (Vector + BM25 + Custom RRF)", "Pure Dense Semantic", "Pure Sparse BM25"],
         help="Custom algorithmic rank fusion combines semantic & keyword signals."
     )
+    if "Hybrid" in search_mode_label:
+        search_mode = "hybrid"
+    elif "Dense" in search_mode_label:
+        search_mode = "dense"
+    else:
+        search_mode = "sparse"
 
     top_k = st.slider("Top Evidence Candidates (Top-K)", min_value=3, max_value=20, value=settings.TOP_K_RETRIEVAL)
     
     st.divider()
     st.subheader("🤖 LLM & Safety")
     llm_provider = st.selectbox("LLM Provider", options=["Google Gemini", "OpenAI", "Groq"])
+    
+    api_key_input = st.text_input(
+        f"{llm_provider} API Key (არასავალდებულო):",
+        type="password",
+        help="თუ ცარიელია, იმუშავებს ადგილობრივი Grounded Heuristic ძრავა."
+    )
+    if api_key_input:
+        if "Gemini" in llm_provider:
+            os.environ["GEMINI_API_KEY"] = api_key_input
+        elif "OpenAI" in llm_provider:
+            os.environ["OPENAI_API_KEY"] = api_key_input
+        elif "Groq" in llm_provider:
+            os.environ["GROQ_API_KEY"] = api_key_input
+
     strict_mode = st.toggle("Strict Groundedness (Abstain if not found)", value=True)
     detect_contradictions = st.toggle("Contradiction Detection", value=True)
     
     st.divider()
-    st.success(f"Ingestion Ready · {len(doc_store.documents)} Docs Loaded")
+    st.success(f"Indexed Chunks: {len(doc_store.get_all_chunks())} · Knowledge Base Active")
 
 # Header
 st.markdown('<div class="main-header">🔍 AI Investigation Engine</div>', unsafe_allow_html=True)
@@ -137,8 +169,8 @@ with tab_investigate:
     col_query, col_actions = st.columns([4, 1])
     with col_query:
         query_input = st.text_area(
-            "Enter complex investigation query:",
-            value="Which system changes caused the payment processing failure in March, which microservices were damaged, and what documents corroborate this?",
+            "Enter investigation query (ქართულად ან ინგლისურად):",
+            value="რომელმა სისტემურმა ცვლილებებმა გამოიწვია მარტში გადახდების დამუშავების შეფერხება, რომელი სერვისები დაზიანდა და რომელი დოკუმენტები ადასტურებს ამას?",
             height=100
         )
     with col_actions:
@@ -148,54 +180,55 @@ with tab_investigate:
         clear_btn = st.button("🔄 Clear", use_container_width=True)
 
     if run_btn and query_input:
+        with st.spinner("საგამოძიებო ძრავა ამუშავებს შეკითხვას..."):
+            result = agent.investigate(
+                query=query_input,
+                search_mode=search_mode,
+                top_k=top_k,
+                strict_groundedness=strict_mode,
+                detect_contradictions=detect_contradictions
+            )
+
         st.markdown("### 🔎 Investigation Trajectory")
-        
-        with st.status("Executing Multi-Hop Investigation Loop...", expanded=True) as status:
-            st.write("1️⃣ **Query Deconstruction:** Identified targets: payment processing failure, March incident, affected microservices, corroborating documents.")
-            st.write(f"2️⃣ **Retrieval Execution:** Running **{search_mode}** with Top-K={top_k}...")
-            st.write("3️⃣ **Custom RRF Fusion:** Normalizing dense cosine similarity and BM25 scores...")
-            st.write("4️⃣ **Evidence Cross-Checking:** Verifying consistency across retrieved documents...")
-            status.update(label="Investigation completed successfully!", state="complete", expanded=False)
+        with st.status("Multi-Hop Reasoning Pipeline execution details:", expanded=True) as status:
+            for step in result.trajectory:
+                st.write(f"• {step}")
+            status.update(label=f"Investigation status: {result.status.upper()}", state="complete", expanded=False)
 
         col_res, col_side = st.columns([3, 2])
         
         with col_res:
             st.subheader("📝 Synthesized Findings & Verdict")
-            st.markdown("""
-            Based on cross-document correlation, the incident was triggered by **Service Deployment v2.4.1** on March 14, 2024:
+            st.markdown(result.answer)
             
-            - **System Change:** Deployment release `v2.4.1` rolled out to `PaymentGateway-Core` at 13:58 UTC.
-            - **Root Cause:** Database connection pool exhaustion caused by unreleased handles under the new release.
-            - **Affected Microservices:** `PaymentGateway-Core`, `BillingWorker-3`, and `NotificationDispatcher`.
-            - **Corroborating Documents:** `Incident-Report-Mar14.md`, `Architecture-Spec.md`, and `Deploy-Audit-Log.json`.
-            """)
-            
-            if detect_contradictions:
-                st.markdown("""
-                <div class="conflict-box">
-                    <strong>⚠️ Contradiction Detected across sources:</strong><br/>
-                    • <em>Incident-Report-Mar14.md</em> claims rollback was completed at <strong>14:45 UTC</strong>.<br/>
-                    • <em>Deploy-Audit-Log.json (Record #3)</em> records rollback verification at <strong>15:10:04 UTC</strong>.<br/>
-                    <em>Resolution: System highlights a 25-minute conflict between initial incident summary and audit log.</em>
-                </div>
-                """, unsafe_allow_html=True)
+            if result.contradictions:
+                for conflict in result.contradictions:
+                    st.markdown(f"""
+                    <div class="conflict-box">
+                        <strong>⚠️ ურთიერთგამომრიცხავი ინფორმაცია (Contradiction):</strong><br/>
+                        {conflict}
+                    </div>
+                    """, unsafe_allow_html=True)
 
         with col_side:
             st.subheader("📑 Verified Citations & Evidence")
-            all_chunks = doc_store.get_all_chunks()
-            for i, chunk in enumerate(all_chunks[:3]):
-                st.markdown(f"""
-                <div class="citation-box">
-                    <strong>[{chunk.metadata.get('doc_title', 'Doc')}]</strong> (Strategy: {chunk.strategy})<br/>
-                    <em>"{chunk.content[:160]}..."</em><br/>
-                    <small>Chunk ID: {chunk.id} · Match: Semantic + BM25</small>
-                </div>
-                """, unsafe_allow_html=True)
+            if result.citations:
+                for c in result.citations:
+                    page_info = f", Page {c['page_number']}" if c.get('page_number') else ""
+                    st.markdown(f"""
+                    <div class="citation-box">
+                        <strong>[{c['doc_title']}]</strong> (Section: {c['section_header']}{page_info})<br/>
+                        <em>"{c['snippet']}"</em><br/>
+                        <small>Relevance Score: {c['score']} · Chunk: {c['chunk_id']}</small>
+                    </div>
+                    """, unsafe_allow_html=True)
+            else:
+                st.info("შესაბამისი ციტატები ვერ მოიძებნა (არასაკმარისი მტკიცებულება).")
 
 # ----------------- TAB 2: DOCUMENT HUB -----------------
 with tab_documents:
     st.subheader("📂 Document Management & Ingestion Pipeline")
-    st.caption("Upload documents in PDF, Markdown, TXT, or JSON formats. Files are deduplicated, parsed, and chunked.")
+    st.caption("Upload documents in PDF, Markdown, TXT, or JSON formats. Files are deduplicated, parsed, and indexed.")
     
     col_up, col_info = st.columns([2, 1])
     
@@ -221,7 +254,10 @@ with tab_documents:
                         added_count += 1
                     else:
                         dup_count += 1
-                st.success(f"Ingestion complete: {added_count} added, {dup_count} duplicate(s) filtered.")
+                
+                # Re-index hybrid search
+                hybrid_search.index_chunks(doc_store.get_all_chunks())
+                st.success(f"Ingestion complete: {added_count} added, {dup_count} duplicate(s) filtered. Hybrid index updated!")
                 st.rerun()
 
     with col_info:
@@ -248,6 +284,7 @@ with tab_documents:
                     st.code(doc_obj.content[:300] + "...")
                     if st.button(f"🗑️ Delete {d['title']}", key=f"del_{d['id']}"):
                         doc_store.delete_document(d['id'])
+                        hybrid_search.index_chunks(doc_store.get_all_chunks())
                         st.success(f"Deleted {d['title']}")
                         st.rerun()
     else:
@@ -264,9 +301,9 @@ with tab_dataset:
 
     col_d1, col_d2, col_d3 = st.columns(3)
     with col_d1:
-        st.metric("Corpus Documents", f"{corpus_count:,}" if corpus_ready else "0")
+        st.metric("Total Ingested Records", f"{corpus_count:,}" if corpus_ready else "0")
     with col_d2:
-        st.metric("Format", "JSONL Streaming")
+        st.metric("Format", "JSONL Indexed Corpus")
     with col_d3:
         st.metric("Corpus Size", f"{corpus_file.stat().st_size / 1024 / 1024:.1f} MB" if corpus_ready else "0 MB")
 
@@ -277,10 +314,42 @@ with tab_dataset:
                 st.success("50,000 Corpus ready!")
                 st.rerun()
     else:
-        st.success(f"✅ 50,000-Document Corpus is active and ready at: `{corpus_file.name}`")
-        st.write("**Sample Records from 50k Corpus:**")
-        sample_records = list(DatasetLoader.stream_documents(limit=5))
-        st.json(sample_records)
+        st.success(f"✅ ბაზაში სრულად არის ჩატვირთული **{corpus_count:,} დოკუმენტი** (`{corpus_file.name}`). ქვემოთ მოცემულია საძიებო და დასათვალიერებელი პანელი.")
+        
+        st.markdown("### 🔎 მონაცემთა ინტერაქტიული დათვალიერება")
+        col_s1, col_s2, col_s3 = st.columns([2, 1, 1])
+        with col_s1:
+            search_corpus = st.text_input("ძიება 50,000 ჩანაწერში (მაგ. PaymentGateway, March, Memory Leak):", placeholder="ჩაწერეთ საკვანძო სიტყვა...")
+        with col_s2:
+            page_offset = st.number_input("საწყისი ინდექსი (Offset):", min_value=0, max_value=corpus_count - 1, value=0, step=25)
+        with col_s3:
+            display_limit = st.selectbox("ჩასატვირთი რაოდენობა:", options=[10, 25, 50, 100], index=1)
+
+        matching_records = list(DatasetLoader.stream_documents(
+            offset=page_offset,
+            limit=display_limit,
+            search_query=search_corpus if search_corpus else None
+        ))
+
+        if matching_records:
+            st.caption(f"ნაჩვენებია {len(matching_records)} ჩანაწერი (ინდექსი {page_offset}-დან {page_offset + len(matching_records)}):")
+            table_rows = []
+            for r in matching_records:
+                meta = r.get("metadata", {})
+                table_rows.append({
+                    "ID": r.get("id"),
+                    "Title": r.get("title"),
+                    "Service": meta.get("service", "N/A"),
+                    "Severity": meta.get("severity", "N/A"),
+                    "Month": meta.get("month", "N/A"),
+                    "Content Preview": r.get("content", "")[:120] + "..."
+                })
+            st.dataframe(table_rows, use_container_width=True)
+
+            with st.expander("🔍 დოკუმენტის სრული ტექსტის ნახვა (JSON View)"):
+                st.json(matching_records[:5])
+        else:
+            st.warning("მითითებული პარამეტრებით ჩანაწერები ვერ მოიძებნა.")
 
 # ----------------- TAB 4: EVALUATION & BENCHMARKS -----------------
 with tab_eval:

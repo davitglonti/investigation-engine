@@ -172,18 +172,37 @@ class DatasetLoader:
     def stream_documents(
         cls,
         file_path: Optional[Path] = None,
-        limit: Optional[int] = None
+        offset: int = 0,
+        limit: Optional[int] = 50,
+        search_query: Optional[str] = None
     ) -> Generator[Dict, None, None]:
-        """Stream documents lazily without loading the entire 50k into memory."""
+        """Stream documents lazily with offset, limit, and search filter."""
         path = file_path or cls.CORPUS_FILE
         if not path.exists():
             return
 
+        skipped = 0
         emitted = 0
+        query_lower = search_query.lower() if search_query else None
+
         with open(path, "r", encoding="utf-8") as f:
             for line in f:
-                if line.strip():
-                    yield json.loads(line)
-                    emitted += 1
-                    if limit and emitted >= limit:
-                        break
+                if not line.strip():
+                    continue
+                record = json.loads(line)
+                
+                # Filter if search query provided
+                if query_lower:
+                    searchable = f"{record.get('title', '')} {record.get('content', '')}".lower()
+                    if query_lower not in searchable:
+                        continue
+
+                # Handle offset
+                if skipped < offset:
+                    skipped += 1
+                    continue
+
+                yield record
+                emitted += 1
+                if limit and emitted >= limit:
+                    break
