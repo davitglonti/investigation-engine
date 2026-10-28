@@ -1,0 +1,13 @@
+services:
+  - type: web
+    name: ai-investigation-engine
+    env: python
+    region: frankfurt
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: streamlit run src/ui/app.py --server.port $PORT --server.address 0.0.0.0 --server.headless true
+    envVars:
+      - key: PYTHONIOENCODING
+        value: utf-8
+      - key: LLM_PROVIDER
+        value: google

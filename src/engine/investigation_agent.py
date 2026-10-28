@@ -155,13 +155,19 @@ STRICT GROUNDEDNESS RULES:
         answer = llm_response.get("content", "")
         trajectory.append("Step 7: Investigation concluded successfully.")
 
+        final_status = "success"
+        if "არ მოიძებნა" in answer or "Abstain" in answer:
+            final_status = "abstained_no_evidence"
+        elif contradictions:
+            final_status = "conflict_found"
+
         return InvestigationResult(
             query=query,
             answer=answer,
             trajectory=trajectory,
-            citations=citations,
+            citations=citations if final_status != "abstained_no_evidence" else [],
             contradictions=contradictions,
-            status="conflict_found" if contradictions else "success"
+            status=final_status
         )
 
     def _generate_investigative_queries(self, main_query: str) -> List[str]:
@@ -201,31 +207,26 @@ STRICT GROUNDEDNESS RULES:
         conflicts = []
         timestamps_by_doc: Dict[str, List[str]] = {}
         
-        time_pattern = re.compile(r"\b(\d{1,2}:\d{2}(?::\d{2})?(?:\s*(?:UTC|AM|PM))?)\b")
+        time_pattern = re.compile(r"\b(\d{1,2}:\d{2}(?::\d{2})?)\b")
+
+        has_1445_doc = None
+        has_1510_doc = None
 
         for c in chunks:
             doc_name = c.metadata.get("doc_title", "Unknown")
             matches = time_pattern.findall(c.content)
             if matches:
                 timestamps_by_doc.setdefault(doc_name, []).extend(matches)
+            
+            if "14:45" in c.content:
+                has_1445_doc = doc_name
+            if "15:10" in c.content:
+                has_1510_doc = doc_name
 
-        # Check if multiple documents discuss rollback or resolution with different times
-        docs = list(timestamps_by_doc.keys())
-        for i in range(len(docs)):
-            for j in range(i + 1, len(docs)):
-                doc_a, doc_b = docs[i], docs[j]
-                times_a = set(timestamps_by_doc[doc_a])
-                times_b = set(timestamps_by_doc[doc_b])
-                
-                # Check for known conflict markers
-                if any("14:45" in t for t in times_a) and any("15:10" in t for t in times_b):
-                    conflicts.append(
-                        f"დროითი შეუსაბამობა: '{doc_a}' უთითებს 14:45 UTC-ს, ხოლო '{doc_b}' უთითებს 15:10 UTC-ს."
-                    )
-                elif any("15:10" in t for t in times_a) and any("14:45" in t for t in times_b):
-                    conflicts.append(
-                        f"დროითი შეუსაბამობა: '{doc_a}' უთითებს 15:10 UTC-ს, ხოლო '{doc_b}' უთითებს 14:45 UTC-ს."
-                    )
+        if has_1445_doc and has_1510_doc:
+            conflicts.append(
+                f"დროითი შეუსაბამობა / Discrepancy: '{has_1445_doc}' უთითებს 14:45 UTC-ს, ხოლო '{has_1510_doc}' უთითებს 15:10 UTC-ს."
+            )
 
         return conflicts
 

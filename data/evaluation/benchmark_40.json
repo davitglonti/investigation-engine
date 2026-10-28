@@ -1,0 +1,322 @@
+[
+  {
+    "id": "tc_01",
+    "category": "simple_fact",
+    "question": "What is the default database connection pool limit per node in the Payment Gateway architecture?",
+    "ground_truth_doc_ids": ["Architecture-Spec.md"],
+    "expected_answer": "50 concurrent connections per node",
+    "expected_contradiction": false
+  },
+  {
+    "id": "tc_02",
+    "category": "simple_fact",
+    "question": "What severity level was assigned to the March 14 Payment Gateway outage in the incident report?",
+    "ground_truth_doc_ids": ["Incident-Report-Mar14.md"],
+    "expected_answer": "P1-Critical",
+    "expected_contradiction": false
+  },
+  {
+    "id": "tc_03",
+    "category": "simple_fact",
+    "question": "What latency threshold causes the circuit breaker to trip according to the capacity specification?",
+    "ground_truth_doc_ids": ["Architecture-Spec.md"],
+    "expected_answer": "2500ms over a 30-second sliding window",
+    "expected_contradiction": false
+  },
+  {
+    "id": "tc_04",
+    "category": "simple_fact",
+    "question": "At what exact time did the deployment bot release version v2.4.1 to PaymentGateway-Core?",
+    "ground_truth_doc_ids": ["Deploy-Audit-Log.json"],
+    "expected_answer": "13:58:00 UTC",
+    "expected_contradiction": false
+  },
+  {
+    "id": "tc_05",
+    "category": "simple_fact",
+    "question": "Which user or automated entity triggered the deployment of release v2.4.1?",
+    "ground_truth_doc_ids": ["Deploy-Audit-Log.json"],
+    "expected_answer": "deploy-bot",
+    "expected_contradiction": false
+  },
+  {
+    "id": "tc_06",
+    "category": "simple_fact",
+    "question": "What alarm event was triggered at 14:15:22 UTC according to audit logs?",
+    "ground_truth_doc_ids": ["Deploy-Audit-Log.json"],
+    "expected_answer": "Pool limit 50/50 reached on cluster 3",
+    "expected_contradiction": false
+  },
+  {
+    "id": "tc_07",
+    "category": "simple_fact",
+    "question": "Who verified the clean rollback to release v2.4.0 in the audit record?",
+    "ground_truth_doc_ids": ["Deploy-Audit-Log.json"],
+    "expected_answer": "sre-lead",
+    "expected_contradiction": false
+  },
+  {
+    "id": "tc_08",
+    "category": "simple_fact",
+    "question": "What automated regression suite must updates pass before promotion to production?",
+    "ground_truth_doc_ids": ["Architecture-Spec.md"],
+    "expected_answer": "automated pool leak regression suites",
+    "expected_contradiction": false
+  },
+  {
+    "id": "tc_09",
+    "category": "multihop_reasoning",
+    "question": "Which software version caused database connection pool exhaustion and at what time was it rolled out?",
+    "ground_truth_doc_ids": ["Incident-Report-Mar14.md", "Deploy-Audit-Log.json"],
+    "expected_answer": "Release v2.4.1 deployed at 13:58:00 UTC caused the pool exhaustion.",
+    "expected_contradiction": false
+  },
+  {
+    "id": "tc_10",
+    "category": "multihop_reasoning",
+    "question": "Why did the alarm trigger at 14:15:22 UTC based on architectural pool thresholds?",
+    "ground_truth_doc_ids": ["Deploy-Audit-Log.json", "Architecture-Spec.md"],
+    "expected_answer": "Because the active connections hit 50/50, which is the maximum pool limit per node configured in Architecture-Spec.",
+    "expected_contradiction": false
+  },
+  {
+    "id": "tc_11",
+    "category": "multihop_reasoning",
+    "question": "How did the unreleased handles in release v2.4.1 lead to the P1 incident?",
+    "ground_truth_doc_ids": ["Incident-Report-Mar14.md", "Architecture-Spec.md"],
+    "expected_answer": "Unreleased handles exhausted the 50 concurrent connection pool limit, causing complete transaction failure.",
+    "expected_contradiction": false
+  },
+  {
+    "id": "tc_12",
+    "category": "multihop_reasoning",
+    "question": "Which three microservices failed after the 13:58 deployment bot event?",
+    "ground_truth_doc_ids": ["Deploy-Audit-Log.json", "Incident-Report-Mar14.md"],
+    "expected_answer": "PaymentGateway-Core, BillingWorker-3, and NotificationDispatcher.",
+    "expected_contradiction": false
+  },
+  {
+    "id": "tc_13",
+    "category": "multihop_reasoning",
+    "question": "Did the release that caused transaction failure violate architecture regression requirements?",
+    "ground_truth_doc_ids": ["Incident-Report-Mar14.md", "Architecture-Spec.md"],
+    "expected_answer": "Yes, release v2.4.1 had unreleased handles (a connection pool leak), which violates the mandatory automated pool leak suite requirement.",
+    "expected_contradiction": false
+  },
+  {
+    "id": "tc_14",
+    "category": "multihop_reasoning",
+    "question": "What target version did sre-lead restore to stabilize the affected cluster?",
+    "ground_truth_doc_ids": ["Deploy-Audit-Log.json", "Incident-Report-Mar14.md"],
+    "expected_answer": "Release v2.4.0 (the stable release prior to v2.4.1).",
+    "expected_contradiction": false
+  },
+  {
+    "id": "tc_15",
+    "category": "multihop_reasoning",
+    "question": "How much time elapsed between deployment of v2.4.1 and the first connection alarm?",
+    "ground_truth_doc_ids": ["Deploy-Audit-Log.json"],
+    "expected_answer": "Approximately 17 minutes (from 13:58 UTC to 14:15 UTC).",
+    "expected_contradiction": false
+  },
+  {
+    "id": "tc_16",
+    "category": "multihop_reasoning",
+    "question": "Which node capacity parameter prevented workers from opening 60 simultaneous database connections?",
+    "ground_truth_doc_ids": ["Architecture-Spec.md"],
+    "expected_answer": "The maximum connection pool limit of 50 concurrent connections per node.",
+    "expected_contradiction": false
+  },
+  {
+    "id": "tc_17",
+    "category": "cross_document_correlation",
+    "question": "Which documents confirm that the March 14 incident was related to database connection pooling?",
+    "ground_truth_doc_ids": ["Incident-Report-Mar14.md", "Architecture-Spec.md", "Deploy-Audit-Log.json"],
+    "expected_answer": "Incident-Report-Mar14.md, Architecture-Spec.md, and Deploy-Audit-Log.json.",
+    "expected_contradiction": false
+  },
+  {
+    "id": "tc_18",
+    "category": "cross_document_correlation",
+    "question": "Correlate the 14:15 failure described in the incident report with the corresponding event in the audit log.",
+    "ground_truth_doc_ids": ["Incident-Report-Mar14.md", "Deploy-Audit-Log.json"],
+    "expected_answer": "The incident report summary notes complete transaction failure at 14:15 UTC, correlating with the audit log alarm 'Pool limit 50/50 reached on cluster 3' at 14:15:22 UTC.",
+    "expected_contradiction": false
+  },
+  {
+    "id": "tc_19",
+    "category": "cross_document_correlation",
+    "question": "Compare the services impacted during the March 14 outage with the components governed by the Architecture Spec.",
+    "ground_truth_doc_ids": ["Incident-Report-Mar14.md", "Architecture-Spec.md"],
+    "expected_answer": "PaymentGateway-Core is the primary service governed by the Architecture Spec connection pooling rules, and was the primary service impacted.",
+    "expected_contradiction": false
+  },
+  {
+    "id": "tc_20",
+    "category": "cross_document_correlation",
+    "question": "Identify which audit log user action resolved the failure documented in the incident post-mortem.",
+    "ground_truth_doc_ids": ["Incident-Report-Mar14.md", "Deploy-Audit-Log.json"],
+    "expected_answer": "sre-lead verifying the rollback to v2.4.0 at 15:10:04 UTC.",
+    "expected_contradiction": false
+  },
+  {
+    "id": "tc_21",
+    "category": "cross_document_correlation",
+    "question": "What evidence across the incident report and audit logs proves that release v2.4.1 was faulty?",
+    "ground_truth_doc_ids": ["Incident-Report-Mar14.md", "Deploy-Audit-Log.json"],
+    "expected_answer": "The audit log shows failure occurred 17 minutes after deploying v2.4.1, and the incident post-mortem cites unreleased handles in v2.4.1 as the root cause.",
+    "expected_contradiction": false
+  },
+  {
+    "id": "tc_22",
+    "category": "cross_document_correlation",
+    "question": "What is the relationship between the circuit breaker thresholds and the transaction drop at 14:15 UTC?",
+    "ground_truth_doc_ids": ["Architecture-Spec.md", "Incident-Report-Mar14.md"],
+    "expected_answer": "Architecture Spec states circuit breakers trip when latency exceeds 2500ms, which occurred when connection pool exhaustion blocked database queries.",
+    "expected_contradiction": false
+  },
+  {
+    "id": "tc_23",
+    "category": "cross_document_correlation",
+    "question": "Which document specifies architectural limits versus the document that logs runtime alarm violations?",
+    "ground_truth_doc_ids": ["Architecture-Spec.md", "Deploy-Audit-Log.json"],
+    "expected_answer": "Architecture-Spec.md specifies the limits, while Deploy-Audit-Log.json logs the runtime alarm.",
+    "expected_contradiction": false
+  },
+  {
+    "id": "tc_24",
+    "category": "cross_document_correlation",
+    "question": "List the full sequence of events from deployment to remediation using timestamps from all documents.",
+    "ground_truth_doc_ids": ["Deploy-Audit-Log.json", "Incident-Report-Mar14.md"],
+    "expected_answer": "13:58 Deploy v2.4.1 -> 14:15 Pool limit reached & failure -> 14:45 Reported rollback / 15:10 Verified rollback to v2.4.0.",
+    "expected_contradiction": false
+  },
+  {
+    "id": "tc_25",
+    "category": "unanswerable_abstention",
+    "question": "What was the exact dollar amount lost in financial damages during the March 14 incident?",
+    "ground_truth_doc_ids": [],
+    "expected_answer": "ABSTAIN",
+    "expected_contradiction": false
+  },
+  {
+    "id": "tc_26",
+    "category": "unanswerable_abstention",
+    "question": "Which individual software engineer wrote the pull request introducing the unreleased handles?",
+    "ground_truth_doc_ids": [],
+    "expected_answer": "ABSTAIN",
+    "expected_contradiction": false
+  },
+  {
+    "id": "tc_27",
+    "category": "unanswerable_abstention",
+    "question": "What brand of physical server hardware was deployed in cluster 3?",
+    "ground_truth_doc_ids": [],
+    "expected_answer": "ABSTAIN",
+    "expected_contradiction": false
+  },
+  {
+    "id": "tc_28",
+    "category": "unanswerable_abstention",
+    "question": "What was the weather in Frankfurt when the deploy-bot initiated release v2.4.1?",
+    "ground_truth_doc_ids": [],
+    "expected_answer": "ABSTAIN",
+    "expected_contradiction": false
+  },
+  {
+    "id": "tc_29",
+    "category": "unanswerable_abstention",
+    "question": "Which third-party credit card processor rejected transaction tokens during the outage?",
+    "ground_truth_doc_ids": [],
+    "expected_answer": "ABSTAIN",
+    "expected_contradiction": false
+  },
+  {
+    "id": "tc_30",
+    "category": "unanswerable_abstention",
+    "question": "What is the IP address of the database primary replica?",
+    "ground_truth_doc_ids": [],
+    "expected_answer": "ABSTAIN",
+    "expected_contradiction": false
+  },
+  {
+    "id": "tc_31",
+    "category": "unanswerable_abstention",
+    "question": "When is the scheduled maintenance window for Q3 2026?",
+    "ground_truth_doc_ids": [],
+    "expected_answer": "ABSTAIN",
+    "expected_contradiction": false
+  },
+  {
+    "id": "tc_32",
+    "category": "unanswerable_abstention",
+    "question": "Who approved the promotion of release v2.4.1 despite skipping the regression suite?",
+    "ground_truth_doc_ids": [],
+    "expected_answer": "ABSTAIN",
+    "expected_contradiction": false
+  },
+  {
+    "id": "tc_33",
+    "category": "contradiction_detection",
+    "question": "What time was the rollback completed according to the post-mortem versus the audit log?",
+    "ground_truth_doc_ids": ["Incident-Report-Mar14.md", "Deploy-Audit-Log.json"],
+    "expected_answer": "Incident-Report-Mar14.md claims rollback completed at 14:45 UTC, whereas Deploy-Audit-Log.json records verified rollback completion at 15:10:04 UTC.",
+    "expected_contradiction": true
+  },
+  {
+    "id": "tc_34",
+    "category": "contradiction_detection",
+    "question": "Is there a conflict between when engineering thought the system recovered and when audit records prove it?",
+    "ground_truth_doc_ids": ["Incident-Report-Mar14.md", "Deploy-Audit-Log.json"],
+    "expected_answer": "Yes, there is a 25-minute discrepancy between 14:45 UTC (preliminary report) and 15:10 UTC (actual audit verification).",
+    "expected_contradiction": true
+  },
+  {
+    "id": "tc_35",
+    "category": "contradiction_detection",
+    "question": "Do the documents agree on the exact minute of service restoration?",
+    "ground_truth_doc_ids": ["Incident-Report-Mar14.md", "Deploy-Audit-Log.json"],
+    "expected_answer": "No, they disagree: the post-mortem states 14:45 UTC while the audit log timestamps it at 15:10:04 UTC.",
+    "expected_contradiction": true
+  },
+  {
+    "id": "tc_36",
+    "category": "contradiction_detection",
+    "question": "What discrepancy exists regarding the timeline of rollback activities?",
+    "ground_truth_doc_ids": ["Incident-Report-Mar14.md", "Deploy-Audit-Log.json"],
+    "expected_answer": "Discrepancy of 25 minutes between reported mitigation at 14:45 UTC and audit verification at 15:10 UTC.",
+    "expected_contradiction": true
+  },
+  {
+    "id": "tc_37",
+    "category": "contradiction_detection",
+    "question": "Identify any contradictory timestamps recorded between the incident post-mortem note and system logs.",
+    "ground_truth_doc_ids": ["Incident-Report-Mar14.md", "Deploy-Audit-Log.json"],
+    "expected_answer": "Contradiction detected: Post-mortem notes 14:45 UTC rollback vs audit log record 15:10:04 UTC.",
+    "expected_contradiction": true
+  },
+  {
+    "id": "tc_38",
+    "category": "contradiction_detection",
+    "question": "Does the audit log corroborate the post-mortem claim of 14:45 resolution?",
+    "ground_truth_doc_ids": ["Incident-Report-Mar14.md", "Deploy-Audit-Log.json"],
+    "expected_answer": "No, the audit log contradicts it by showing rollback completion at 15:10:04 UTC.",
+    "expected_contradiction": true
+  },
+  {
+    "id": "tc_39",
+    "category": "contradiction_detection",
+    "question": "Which two sources give conflicting timestamps for the recovery of PaymentGateway-Core?",
+    "ground_truth_doc_ids": ["Incident-Report-Mar14.md", "Deploy-Audit-Log.json"],
+    "expected_answer": "Incident-Report-Mar14.md (14:45 UTC) and Deploy-Audit-Log.json (15:10:04 UTC).",
+    "expected_contradiction": true
+  },
+  {
+    "id": "tc_40",
+    "category": "contradiction_detection",
+    "question": "Highlight any conflicting operational records concerning the March 14 deployment rollback.",
+    "ground_truth_doc_ids": ["Incident-Report-Mar14.md", "Deploy-Audit-Log.json"],
+    "expected_answer": "Conflicting recovery times: 14:45 UTC stated in summary note vs 15:10 UTC logged in audit trail.",
+    "expected_contradiction": true
+  }
+]

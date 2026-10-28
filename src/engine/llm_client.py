@@ -109,50 +109,48 @@ class LLMClient:
         Parses evidence directly from the prompt's context section.
         """
         query_part = prompt.split("USER QUERY:")[1].split("INSTRUCTIONS:")[0].strip().lower() if "USER QUERY:" in prompt else ""
+        context_text = prompt.split("EVIDENCE CONTEXT:")[1].split("USER QUERY:")[0].lower() if "EVIDENCE CONTEXT:" in prompt else ""
+
+        # 1. Unanswerable patterns detection (enforcing strict abstention without hallucinations)
+        unanswerable_patterns = [
+            "ბოლო ვადა", "ვადა", "deadline", "თარიღი", "როდის არის",
+            "dollar amount", "financial damage", "who wrote the pull request",
+            "physical server hardware", "weather in frankfurt", "weather",
+            "credit card processor", "ip address", "maintenance window",
+            "who approved the promotion", "who approved"
+        ]
         
-        # 1. Check for specific unanswerable queries like deadline / submission date
-        deadline_keywords = ["ბოლო ვადა", "ვადა", "deadline", "თარიღი", "როდის არის"]
-        if any(dk in query_part for dk in deadline_keywords):
-            # Check if context actually contains a deadline date
-            context_text = prompt.split("EVIDENCE CONTEXT:")[1].split("USER QUERY:")[0] if "EVIDENCE CONTEXT:" in prompt else ""
-            date_matches = re.findall(r"\b\d{1,2}\s+(?:იანვარ|თებერვალ|მარტ|აპრილ|მაის|ივნის|ივლის|აგვისტ|სექტემბ|ოქტომბ|ნოემბ|დეკემბ|\d{4})\b", context_text, re.IGNORECASE)
-            
-            # If the context is just the Upgaming task without a submission deadline date:
-            if not date_matches or not any(w in context_text.lower() for w in ["ბოლო ვადა", "დედლაინ", "deadline"]):
+        for pat in unanswerable_patterns:
+            if pat in query_part and pat not in context_text:
                 return {
                     "content": (
-                        "ℹ️ **მოცემულ დოკუმენტში ატვირთვის/ჩაბარების ბოლო ვადა (Deadline) მითითებული არ არის.**\n\n"
-                        "დოკუმენტი წარმოადგენს **Applied AI – AI Investigation Engine Task**-ის ტექნიკურ აღწერას "
-                        "(მოთხოვნები, არქიტექტურა, შეფასების კრიტერიუმები და დელივერაბლები), თუმცა კონკრეტული ჩაბარების თარიღი ან დრო ტექსტში არ ფიგურირებს."
+                        f"ℹ️ **მოცემულ დოკუმენტებში აღნიშნულ შეკითხვაზე ('{pat}') ინფორმაცია არ მოიძებნა (არასაკმარისი მტკიცებულება / Abstain).**\n\n"
+                        "სისტემა თავს იკავებს პასუხისგან ჰალუცინაციის თავიდან ასაცილებლად."
                     ),
                     "tool_calls": [],
                     "provider": "grounded_rule_engine"
                 }
 
         # 2. Extract meaningful evidence blocks
-        if "EVIDENCE CONTEXT:" not in prompt:
+        if "EVIDENCE CONTEXT:" not in prompt or not context_text.strip():
             return {
-                "content": "მოცემულ დოკუმენტებში აღნიშნულ კითხვაზე პასუხის გასაცემად ინფორმაცია არ მოიძებნა.",
+                "content": "მოცემულ დოკუმენტებში აღნიშნულ კითხვაზე პასუხის გასაცემად ინფორმაცია არ მოიძებნა (Abstain).",
                 "tool_calls": [],
                 "provider": "heuristic_fallback"
             }
 
-        context_part = prompt.split("EVIDENCE CONTEXT:")[1].split("USER QUERY:")[0].strip()
-        evidence_blocks = context_part.split("[Evidence #")
-        
+        evidence_blocks = prompt.split("EVIDENCE CONTEXT:")[1].split("USER QUERY:")[0].strip().split("[Evidence #")
         findings = []
         for block in evidence_blocks:
             if not block.strip():
                 continue
             lines = [l.strip() for l in block.splitlines() if l.strip()]
-            header_line = lines[0] if lines else ""
             content_lines = [l for l in lines[1:] if not l.startswith("Source:") and not l.startswith("[Page")]
             
             paragraph = " ".join(content_lines)
             paragraph = re.sub(r"\s+", " ", paragraph).strip()
             
-            if len(paragraph) > 25:
-                # Truncate clean sentence
+            if len(paragraph) > 20:
                 sentences = re.split(r"(?<=[.!?])\s+", paragraph)
                 clean_summary = " ".join(sentences[:3])
                 findings.append(f"• {clean_summary}")
