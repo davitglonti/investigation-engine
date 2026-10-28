@@ -49,6 +49,9 @@ class Settings(BaseSettings):
     QDRANT_API_KEY: str = Field(default_factory=lambda: get_secret("QDRANT_API_KEY"))
     QDRANT_COLLECTION: str = "investigation_corpus"
 
+    # Storage paths
+    UPLOAD_DIR: str = str(BASE_DIR / "data" / "uploaded_docs")
+
     # API & UI Server
     API_HOST: str = "0.0.0.0"
     API_PORT: int = 8000
