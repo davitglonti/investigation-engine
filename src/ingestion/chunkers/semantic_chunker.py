@@ -4,12 +4,12 @@ from src.ingestion.models import Chunk, Document
 from src.ingestion.chunkers.base import BaseChunker
 
 
-class SemanticStructureChunker(BaseChunker):
+class StructureAwareChunker(BaseChunker):
     """
-    Strategy 2: Structure & Semantic Section Chunking.
+    Strategy 2: Document Structure-Aware Chunking (Heading hierarchy & Page-Aware).
     Preserves document structure (Markdown headings, PDF pages, JSON records)
     and attaches structural context (section headers, page numbers) to each chunk.
-    Avoids arbitrary word-cuts and preserves semantic units.
+    Avoids arbitrary word-cuts and preserves semantic boundaries.
     """
 
     def __init__(self, chunk_size: int = 600, chunk_overlap: int = 80):
@@ -166,3 +166,7 @@ class SemanticStructureChunker(BaseChunker):
     def _split_into_sentences(self, text: str) -> List[str]:
         sentence_endings = re.compile(r'(?<=[.!?]) +')
         return [s.strip() for s in sentence_endings.split(text) if s.strip()]
+
+
+# Backward compatibility and Strategy naming alias
+SemanticStructureChunker = StructureAwareChunker

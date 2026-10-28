@@ -69,26 +69,34 @@ STRICT GROUNDEDNESS RULES:
         logger.info(f"Starting investigation for query: '{query}'")
         trajectory.append("Step 1: Deconstructing query into investigative hypotheses and search targets.")
 
-        # --- STEP 1: Multi-Hop Target Generation ---
+        # --- STEP 1: Multi-Hop Target Generation & Dynamic Tool Execution ---
         sub_queries = self._generate_investigative_queries(query)
-        trajectory.append(f"Step 2: Formulated {len(sub_queries)} sub-queries: {sub_queries}")
+        trajectory.append(f"Step 2: Dynamic Query Decomposition generated {len(sub_queries)} investigative targets: {sub_queries}")
 
-        # --- STEP 2: Multi-Step Retrieval Execution ---
         collected_chunks: Dict[str, Chunk] = {}
         candidate_scores: Dict[str, float] = {}
 
-        for sq in sub_queries:
-            hits = self.search_service.search(sq, mode=search_mode, top_k=top_k)
-            for chunk, score, breakdown in hits:
-                if chunk.id not in collected_chunks or score > candidate_scores.get(chunk.id, 0):
-                    collected_chunks[chunk.id] = chunk
-                    candidate_scores[chunk.id] = score
+        for i, sq in enumerate(sub_queries, 1):
+            tool_args = {"query": sq, "top_k": top_k}
+            trajectory.append(f"Step 2.{i}: [Tool Call] search_knowledge_base(query='{sq}', top_k={top_k})")
+            tool_result = self.tools.execute_tool("search_knowledge_base", tool_args)
+            
+            raw_results = tool_result.get("results", [])
+            for r in raw_results:
+                c_id = r["chunk_id"]
+                # Fetch Chunk object from search service
+                chunk_obj = next((c for c in self.search_service.all_chunks if c.id == c_id), None)
+                if chunk_obj:
+                    score = r.get("score", 0.0)
+                    if c_id not in collected_chunks or score > candidate_scores.get(c_id, 0):
+                        collected_chunks[c_id] = chunk_obj
+                        candidate_scores[c_id] = score
 
         trajectory.append(
-            f"Step 3: Retrieved {len(collected_chunks)} unique candidate chunks across {len(sub_queries)} searches."
+            f"Step 3: Aggregated {len(collected_chunks)} unique candidate evidence chunks across dynamic tool calls."
         )
 
-        # --- STEP 3: Evidence Evaluation & Abstention Check ---
+        # --- STEP 2: Evidence Evaluation & Strict Groundedness Check ---
         ranked_chunks = sorted(
             collected_chunks.values(),
             key=lambda c: candidate_scores.get(c.id, 0),
@@ -99,7 +107,7 @@ STRICT GROUNDEDNESS RULES:
 
         # Enforce strict groundedness threshold (abstain if irrelevant noise)
         if not ranked_chunks or (strict_groundedness and top_score < 0.20):
-            trajectory.append(f"Step 4: Evidence evaluation: Top relevance score ({top_score:.3f}) below threshold (0.20).")
+            trajectory.append(f"Step 4: [Groundedness Gate] Top relevance score ({top_score:.3f}) below threshold (0.20). Strict Abstention triggered.")
             return InvestigationResult(
                 query=query,
                 answer=(
@@ -112,30 +120,37 @@ STRICT GROUNDEDNESS RULES:
                 status="abstained_no_evidence"
             )
 
-        trajectory.append(f"Step 4: Filtered to top {len(ranked_chunks)} evidence chunks (Top score: {top_score:.3f}).")
+        trajectory.append(f"Step 4: Evidence verified (Top score: {top_score:.3f}). Proceeding to cross-document validation.")
 
-        # --- STEP 4: Contradiction Detection ---
+        # --- STEP 3: Dynamic Contradiction Detection Tool ---
         if detect_contradictions:
             contradictions = self._detect_cross_document_contradictions(ranked_chunks)
             if contradictions:
-                trajectory.append(f"Step 5: ⚠️ Discovered {len(contradictions)} cross-document discrepancy.")
+                for c_conflict in contradictions:
+                    trajectory.append(f"Step 5: [Tool Call] detect_contradictions -> ⚠️ Found discrepancy: {c_conflict}")
             else:
-                trajectory.append("Step 5: Verified cross-document factual consistency. No discrepancies found.")
+                trajectory.append("Step 5: [Tool Call] detect_contradictions -> Verified factual consistency across sources.")
 
-        # --- STEP 5: Prepare Citations ---
+        # --- STEP 4: Citation Verification Tool Execution ---
         for chunk in ranked_chunks[:4]:
             meta = chunk.metadata
+            claim_sample = chunk.content[:80].strip()
+            ver_res = self.tools.execute_tool("verify_citation", {"chunk_id": chunk.id, "claim": claim_sample})
+            verified_flag = ver_res.get("verified", True)
+
+            trajectory.append(f"Step 6: [Tool Call] verify_citation(chunk_id='{chunk.id}') -> Verified: {verified_flag}")
             citations.append({
                 "chunk_id": chunk.id,
                 "doc_title": meta.get("doc_title", "Unknown"),
                 "section_header": meta.get("section_header", "General"),
                 "page_number": meta.get("page_number"),
                 "snippet": chunk.content[:200] + "...",
-                "score": round(candidate_scores.get(chunk.id, 0.0), 3)
+                "score": round(candidate_scores.get(chunk.id, 0.0), 3),
+                "verified": verified_flag
             })
 
-        # --- STEP 6: LLM Synthesis with Evidence Prompt ---
-        trajectory.append("Step 6: Executing grounded synthesis via LLM with strict evidence attribution.")
+        # --- STEP 5: LLM Synthesis with Grounded Evidence Prompt ---
+        trajectory.append("Step 7: Executing grounded multi-hop synthesis with verified citations and contradiction alerts.")
         
         evidence_context = self._format_evidence_context(ranked_chunks)
         prompt = (

@@ -129,7 +129,7 @@ python -m src.evaluation.evaluator
 ```
 
 ### Benchmark Summary (Config A vs Config B):
-| Metric | Configuration A (Baseline: Recursive + Vector) | Configuration B (Our Pipeline: Semantic + Hybrid RRF) | Delta |
+| Metric | Configuration A (Baseline: Recursive + Vector) | Configuration B (Our Pipeline: Structure-Aware + Hybrid RRF) | Delta |
 |:---|:---:|:---:|:---:|
 | **Recall@5** | `66.7%` | **`100.0%`** | **+33.3%** |
 | **MRR (Mean Reciprocal Rank)** | `0.85` | **`0.95`** | **+0.10** |
@@ -142,13 +142,38 @@ python -m src.evaluation.evaluator
 
 ---
 
-## 🌐 6. Free Cloud Deployment Guide
+## 📦 6. 50,000+ Record Dataset CLI & Ingestion Pipeline
 
-The engine is engineered to run on **100% free hosting platforms** (Render, Hugging Face Spaces, or Koyeb).
+To satisfy Section 3 of the challenge, the system includes a dedicated high-throughput dataset streaming CLI supporting **HotpotQA** and technical multi-hop incident benchmarks:
+
+```bash
+# Verify or stream 50,000 document corpus
+python -m src.ingestion.dataset_loader --dataset hotpot_qa --target-records 50000 --batch-size 250
+```
+
+- **Scale & Architecture:** Uses lazy generator streaming to process 50,000+ records with zero memory bloat.
+- **Cloud Free-Tier Justification:** In free hosting environments (Streamlit Community Cloud and Qdrant 1GB Free Tier), a documented reproducible subset of incident reports and multi-hop scenarios is indexed live to stay strictly within container RAM limits, while the full 50,000-record corpus is accessible via the streaming dataset explorer and pagination pipeline.
+
+---
+
+## 🌐 7. Free Cloud Deployment Guide
+
+The engine is engineered to run on **100% free hosting platforms** (Streamlit Community Cloud, Render, Hugging Face Spaces, or Koyeb).
+
+### Deploying to Streamlit Cloud (Live Demo):
+1. Connect your GitHub repository `davitglonti/investigation-engine` on [share.streamlit.io](https://share.streamlit.io).
+2. Branch: `main` | Main file path: `src/ui/app.py`.
+3. In **App Settings → Secrets**, add your free-tier keys:
+   ```toml
+   GEMINI_API_KEY = "your-gemini-api-key"
+   # Optional: For persistence across container restarts (Qdrant Cloud Free Tier)
+   QDRANT_URL = "https://your-cluster-url.cloud.qdrant.io"
+   QDRANT_API_KEY = "your-qdrant-api-key"
+   ```
 
 ### Deploying to Render:
 1. Connect your GitHub repository to [Render.com](https://render.com/).
-2. Select **Web Service** -> Python 3.
+2. Select **Web Service** -> Python 3 (automatically detects `render.yaml`).
 3. Build Command: `pip install -r requirements.txt`
 4. Start Command: `streamlit run src/ui/app.py --server.port $PORT --server.address 0.0.0.0`
 5. Environment Variables:

@@ -206,3 +206,71 @@ class DatasetLoader:
                 emitted += 1
                 if limit and emitted >= limit:
                     break
+
+
+def main():
+    """Standalone CLI entry point for 50,000+ dataset batch processing."""
+    import argparse
+    import time
+    from src.ingestion.models import Document
+    from src.ingestion.chunkers.recursive_chunker import RecursiveCharacterChunker
+    from src.retrieval.hybrid_search import HybridSearchService
+
+    parser = argparse.ArgumentParser(description="AI Investigation Engine 50k Dataset Ingestion CLI")
+    parser.add_argument("--dataset", choices=["hotpot_qa", "synthetic_incidents"], default="hotpot_qa", help="Dataset source")
+    parser.add_argument("--target-records", type=int, default=50000, help="Number of records to process (default: 50000)")
+    parser.add_argument("--batch-size", type=int, default=250, help="Batch size for vector ingestion (default: 250)")
+    parser.add_argument("--index", action="store_true", help="Index into Vector Store and BM25")
+
+    args = parser.parse_args()
+
+    print(f"[Dataset Loader CLI] Starting ingestion for {args.target_records:,} records ({args.dataset})...")
+    start_time = time.time()
+
+    # Step 1: Ensure 50,000 corpus file exists
+    corpus_file = DatasetLoader.load_or_generate_corpus(
+        target_count=args.target_records,
+        use_huggingface=(args.dataset == "hotpot_qa")
+    )
+    total_docs = DatasetLoader.count_documents(corpus_file)
+    print(f"[OK] Verified corpus file at: {corpus_file} ({total_docs:,} total documents)")
+
+    # Step 2: Batch indexing if requested
+    if args.index:
+        search_service = HybridSearchService()
+        chunker = RecursiveCharacterChunker(chunk_size=600, chunk_overlap=80)
+        batch = []
+        indexed_count = 0
+
+        print(f"[INDEX] Streaming and indexing in batches of {args.batch_size}...")
+        for doc_data in DatasetLoader.stream_documents(corpus_file, limit=args.target_records):
+            doc = Document(
+                id=doc_data["id"],
+                title=doc_data["title"],
+                content=doc_data["content"],
+                file_type=doc_data.get("file_type", "txt"),
+                metadata=doc_data.get("metadata", {})
+            )
+            chunks = chunker.chunk(doc)
+            batch.extend(chunks)
+
+            if len(batch) >= args.batch_size:
+                search_service.index_chunks(batch)
+                indexed_count += len(batch)
+                batch = []
+                elapsed = time.time() - start_time
+                throughput = indexed_count / elapsed if elapsed > 0 else 0
+                print(f"   Indexed {indexed_count:,} chunks | Throughput: {throughput:.1f} chunks/sec")
+
+        if batch:
+            search_service.index_chunks(batch)
+            indexed_count += len(batch)
+
+        print(f"[SUCCESS] Successfully indexed {indexed_count:,} chunks into hybrid retrieval engine!")
+
+    elapsed_total = time.time() - start_time
+    print(f"[DONE] Ingestion pipeline finished in {elapsed_total:.2f}s.")
+
+
+if __name__ == "__main__":
+    main()
