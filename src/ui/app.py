@@ -362,12 +362,21 @@ with tab_documents:
     doc_list = doc_store.list_documents()
     if doc_list:
         for d in doc_list:
-            with st.expander(f"📄 {d['title']} ({d['file_type'].upper()}) - {d['chunk_count']} chunks"):
+            with st.expander(f"📄 {d['title']} ({d['file_type'].upper()}) · {d['chunk_count']} chunks"):
                 st.write(f"**Document ID:** `{d['id']}` | **Size:** {d['char_count']} chars | **Added:** {d['created_at']}")
                 doc_obj = doc_store.get_document(d['id'])
                 if doc_obj:
-                    st.write("**Extracted Text Preview:**")
-                    st.code(doc_obj.content[:300] + "...")
+                    tab_prev, tab_full, tab_chunks = st.tabs(["👁️ Preview", "📖 Full Text", f"🧩 Chunks ({len(doc_obj.chunks)})"])
+                    with tab_prev:
+                        st.code(doc_obj.content[:400] + ("..." if len(doc_obj.content) > 400 else ""))
+                    with tab_full:
+                        st.text_area("Full Document Content:", value=doc_obj.content, height=250, disabled=True, key=f"full_{d['id']}")
+                    with tab_chunks:
+                        for c in doc_obj.chunks:
+                            st.markdown(f"**Chunk #{c.chunk_index + 1}** · *Page {c.metadata.get('page_number', 1)}* · Section: `{c.metadata.get('section_header', 'General')}`")
+                            st.caption(c.content)
+                            st.divider()
+
                     if st.button(f"🗑️ Delete {d['title']}", key=f"del_{d['id']}"):
                         doc_store.delete_document(d['id'])
                         hybrid_search.index_chunks(doc_store.get_all_chunks())
