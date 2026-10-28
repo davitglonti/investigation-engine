@@ -19,15 +19,63 @@ class DocumentStore:
 
     def __init__(self, storage_dir: Optional[Union[str, Path]] = None):
         self.storage_dir = Path(storage_dir) if storage_dir else None
-        if self.storage_dir:
-            self.storage_dir.mkdir(parents=True, exist_ok=True)
-
         self.documents: Dict[str, Document] = {}
         self.deduplicator = Deduplicator()
         
         # Initialize Chunkers
         self.chunker_recursive = RecursiveCharacterChunker()
         self.chunker_semantic = SemanticStructureChunker()
+
+        if self.storage_dir:
+            self.storage_dir.mkdir(parents=True, exist_ok=True)
+            self._load_persisted_documents()
+
+    def _save_persisted_document(self, doc: Document) -> None:
+        """Persist document metadata, content, and chunks to JSON file."""
+        if not self.storage_dir:
+            return
+        doc_path = self.storage_dir / f"{doc.id}.json"
+        try:
+            data = {
+                "id": doc.id,
+                "title": doc.title,
+                "content": doc.content,
+                "file_type": doc.file_type,
+                "content_hash": doc.content_hash,
+                "metadata": doc.metadata,
+                "created_at": doc.created_at,
+                "chunks": [c.model_dump() for c in doc.chunks]
+            }
+            with open(doc_path, "w", encoding="utf-8") as f:
+                json.dump(data, f, ensure_ascii=False, indent=2)
+        except Exception as e:
+            logger.warning(f"Failed to persist document '{doc.id}' to disk ({e}).")
+
+    def _load_persisted_documents(self) -> None:
+        """Load all previously stored documents from disk on boot."""
+        if not self.storage_dir or not self.storage_dir.exists():
+            return
+        for json_file in self.storage_dir.glob("*.json"):
+            try:
+                with open(json_file, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                chunks = [Chunk(**c) for c in data.get("chunks", [])]
+                doc = Document(
+                    id=data["id"],
+                    title=data["title"],
+                    content=data["content"],
+                    file_type=data.get("file_type", "txt"),
+                    content_hash=data.get("content_hash", ""),
+                    metadata=data.get("metadata", {}),
+                    chunks=chunks,
+                    created_at=data.get("created_at", "")
+                )
+                self.documents[doc.id] = doc
+                self.deduplicator.register_document(doc)
+            except Exception as e:
+                logger.warning(f"Error loading persisted document from {json_file}: {e}")
+        if self.documents:
+            logger.info(f"Loaded {len(self.documents)} persisted documents from {self.storage_dir}.")
 
     def add_document(
         self,
@@ -58,6 +106,7 @@ class DocumentStore:
         # 4. Store Document & Register Hashes
         self.documents[doc.id] = doc
         self.deduplicator.register_document(doc)
+        self._save_persisted_document(doc)
 
         logger.info(f"Successfully added document '{doc.title}' [ID: {doc.id}] with {len(chunks)} chunks.")
         return doc, True
@@ -102,6 +151,16 @@ class DocumentStore:
 
         doc = self.documents.pop(doc_id)
         self.deduplicator.unregister_document(doc.id, doc.content_hash)
+        
+        # Remove from persistent storage
+        if self.storage_dir:
+            fpath = self.storage_dir / f"{doc_id}.json"
+            if fpath.exists():
+                try:
+                    fpath.unlink()
+                except Exception:
+                    pass
+
         logger.info(f"Deleted document '{doc.title}' [ID: {doc_id}].")
         return True
 

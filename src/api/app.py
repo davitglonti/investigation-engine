@@ -42,7 +42,7 @@ app.add_middleware(
 )
 
 # Application Singletons
-doc_store = DocumentStore()
+doc_store = DocumentStore(storage_dir="data/uploaded_docs")
 hybrid_search = HybridSearchService()
 agent = InvestigationAgent(hybrid_search)
 

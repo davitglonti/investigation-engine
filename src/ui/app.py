@@ -24,7 +24,7 @@ st.set_page_config(
 
 # ----------------- SESSION STATE INITIALIZATION -----------------
 if "doc_store" not in st.session_state:
-    st.session_state.doc_store = DocumentStore()
+    st.session_state.doc_store = DocumentStore(storage_dir="data/uploaded_docs")
     
     # Pre-load realistic investigation knowledge base
     sample_docs = [
